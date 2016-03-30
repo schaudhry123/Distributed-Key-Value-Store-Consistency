@@ -18,7 +18,7 @@ mutex = Lock()
 # Ran with commands "python basicMessages.py <#process_id>"
 def main(argv):
 	global server_id
-	server_id = parse_file(argv[0])
+	server_id = parse_file(int(argv[0]))
 
 	# If process id could not be found
 	if (server_id == -1):
@@ -49,9 +49,11 @@ def parse_file(server_num):
 	# Count number of lines
 	with open('../configs/config.txt') as f:
 		for line in f:
-			num_lines++
+			num_lines += 1
+
 	# Wrap around to the lowest server if no higher servers
-	server_num = server_num % (num_lines-1)
+	if (server_num != num_lines-1):
+		server_num = server_num % (num_lines-1)
 
 	# Find the server information
 	with open('../configs/config.txt') as f:
@@ -63,7 +65,7 @@ def parse_file(server_num):
 				max_delay = int(process_info[1])
 			else:
 				servers.append(process_info)
-			if (server_num == process_info[0]):
+			if (server_num == int(process_info[0])):
 				index = counter-1
 			counter += 1
 	return index
@@ -115,9 +117,9 @@ def setup_client():
 					sent_success = unicast_send(message, "client", server)
 					tries += 1
 
-				# Get response
-				response =
-
+			data = client_sockets[0]['socket'].recv(1024)
+			response = pickle.loads(data)
+			print(response['message'])
 
 	print("Exiting client")
 	for i in range(len(client_sockets)):
@@ -145,11 +147,11 @@ def unicast_send(message, process, destinationInfo):
 	for i in range(len(client_sockets)):
 		# print("Have already connected to " + str(destinationInfo))
 		if (destinationInfo[0] == client_sockets[i]['id']):
-			return send_message(message, process, client_sockets[i], timestamp)
+			return send_message(message, process, client_sockets[i], 0)
 
 	# Else open up a new socket to the process
 	if (create_connection(destinationInfo)):
-		return send_message(message, process, client_sockets[len(client_sockets)-1], timestamp)
+		return send_message(message, process, client_sockets[len(client_sockets)-1], 0)
 
 '''
 Sends a message object to a process given the destination process info, the message, and the source process id
@@ -160,7 +162,7 @@ def send_message(message, source, destination_process, timestamp):
 			'source': source,
 			'destination': destination_process['id'],
 			'timestamp': timestamp,
-			'server': False
+			'process_type': "client",
 	}
 	seralized_message = pickle.dumps(msg, -1)
 	print("Sent " + message + " to process " + str(destination_process['id']) + ", system time is " + str(datetime.datetime.now()).split(".")[0])
