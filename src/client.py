@@ -110,9 +110,9 @@ def setup_client():
 				destination = int(server[0])
 				sent_success = unicast_send(message, "client", server)
 				tries = 0 # To prevent client from spamming a bunch of servers
-				while (sent_success == 0 and tries < 5):
+				while (not sent_success is None and tries < 5):
 					server_id = parse_file(int(server[0])+1)
-					unicast_send(message, "client", server)
+					sent_success = unicast_send(message, "client", server)
 					tries += 1
 
 				# Get response

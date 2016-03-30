@@ -93,7 +93,7 @@ def message_send(user_input, current_process):
 	if (input_split[0] == "msend"):
 
 		message = user_input[6:]
-		if (current_process[0] != "0"):
+		if (current_process[0] != "1"):
 			unicast_send(message, current_process, processes[0], 0)
 			for process in processes:
 				print("Sent " + message + " to process " + str(process[0]) + ", system time is " + str(datetime.datetime.now()).split(".")[0])
@@ -135,9 +135,9 @@ Multicasts a message out to all processes in the group given the message and cur
 def multicast(message, current_process):
 
 	for process in processes:
-		if (process[0] != "0"):
+		if (process[0] != "1"):
 			unicast_send(message, current_process, process, vector_timestamp)
-	if (current_process[0] == "0"):
+	if (current_process[0] == "1"):
 		print("Delivered " + message + " from process " + current_process[0] + ", system time is " + str(datetime.datetime.now()).split(".")[0])
 
 '''
@@ -229,7 +229,7 @@ def deliver_message(message, source, destination):
 
 	print("Delivered " + message + " from process " + str(source) + ", system time is " + str(datetime.datetime.now()).split(".")[0])
 
-	if (destination == 0):
+	if (destination == 1):
 		current_process = None
 		for process in processes:
 			if (int(process[0]) == source):
@@ -248,7 +248,7 @@ def delay_message(message, source, destination, timestamp):
 	v_timestamp = vector_timestamp
 	mutex.release()
 
-	if (destination == 0):
+	if (destination == 1):
 		return True
 
 	# Deliver the message
@@ -264,7 +264,7 @@ def check_queue(process_id):
 	msg = None
 
 	for message in message_queue:
-		if (process_id == 0):
+		if (process_id == 1):
 			message_queue.remove(message)
 			msg = message
 			break
