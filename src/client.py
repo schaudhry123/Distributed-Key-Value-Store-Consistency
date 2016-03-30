@@ -96,8 +96,10 @@ def setup_client():
 				elif (input_split[0] == "get"):
 					message = "g" + input_split[1]
 					valid = True
-			elif (input_split[0] == "delay"):
-				# SLEEP ON SOME SHIT
+			elif (input_split[0] == "delay" and len(input_split) > 1 and input_split[1].isdigit()):
+				print("delaying ")
+				time.sleep(float(input_split[1])/1000.0)	# Random network delay
+				print("done")
 				valid = True
 			elif (user_input == "dump"):
 				message = "d"
@@ -117,9 +119,9 @@ def setup_client():
 					sent_success = unicast_send(message, "client", server)
 					tries += 1
 
-			data = client_sockets[0]['socket'].recv(1024)
-			response = pickle.loads(data)
-			print(response['message'])
+				data = client_sockets[0]['socket'].recv(1024)
+				response = pickle.loads(data)
+				print(response['message'])
 
 	print("Exiting client")
 	for i in range(len(client_sockets)):
@@ -165,7 +167,7 @@ def send_message(message, source, destination_process, timestamp):
 			'process_type': "client",
 	}
 	seralized_message = pickle.dumps(msg, -1)
-	print("Sent " + message + " to process " + str(destination_process['id']) + ", system time is " + str(datetime.datetime.now()).split(".")[0])
+	# print("Sent " + message + " to process " + str(destination_process['id']) + ", system time is " + str(datetime.datetime.now()).split(".")[0])
 	return destination_process['socket'].sendall(seralized_message)
 
 '''
@@ -270,9 +272,14 @@ def check_queue(process_id):
 		deliver_message(message[0], message[1], message[2])
 
 
+def handler(signum, frame):
+	for i in range(len(sockets)):
+		sockets[i]['socket'].close()
+	sys.exit(0)
+
 if __name__ == "__main__":
-	signal.signal(signal.SIGINT, lambda x,y: sys.exit(0))
+	signal.signal(signal.SIGINT, handler)
 	if (len(sys.argv) != 2):
-		print("python " + sys.argv[0] + " <#>")
+		print("python " + sys.argv[0] + " <process #>")
 	else:
 		main(sys.argv[1:])

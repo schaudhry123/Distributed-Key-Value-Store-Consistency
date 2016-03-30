@@ -286,7 +286,9 @@ def deliver_message(message, source, destination, process_type, client_socket_in
 				# print("Delivered " + message + " from client, system time is " + str(datetime.datetime.now()).split(".")[0])
 				multicast(message, current_process, client_socket_index)
 
-				message_obj = { 'message': 'A' }
+				value = update_variable(message)
+
+				message_obj = { 'message': 'A - ' + str(value) }
 				serialized_message = pickle.dumps(message_obj, -1)
 				client_sockets[client_socket_index].sendall(serialized_message)
 			# Else, send it to the sequencer for total order broadcasting
@@ -297,14 +299,17 @@ def deliver_message(message, source, destination, process_type, client_socket_in
 		elif (message == "d"):
 			dump_variables(current_process, client_socket_index)
 
-	# Else delivering message from server
+	# Else delivering message from server (sequencer)
 	else:
 		# If not the sequencer, update the timestamp. Else multicast message out if not sent from itself
 		vector_timestamp += 1
+		value = -1
 
-		print("Delivered " + message + " from server " + str(source) + ", system time is " + str(datetime.datetime.now()).split(".")[0])
+		print("Delivered " + message + " from process " + str(source) + ", system time is " + str(datetime.datetime.now()).split(".")[0])
 
 		# Actually deliver it --- i.e. write to variable
+		if (message[0] == "p" or message[0] == "g"):
+			value = update_variable(message)
 
 		if (destination == 1):
 			current_process = find_current_process(source)
@@ -312,8 +317,9 @@ def deliver_message(message, source, destination, process_type, client_socket_in
 
 		# If you delivered the request to yourself, send acknowledgment/response to client
 		if (source == destination):
-			print("Sending acknowledgment to client index " + str(client_socket_index))
-			message_obj = { 'message': 'A' }
+			# value = update_variable(message)
+
+			message_obj = { 'message': 'A - ' + str(value) }
 			serialized_message = pickle.dumps(message_obj, -1)
 			client_sockets[client_socket_index].sendall(serialized_message)
 
@@ -322,11 +328,29 @@ def deliver_message(message, source, destination, process_type, client_socket_in
 """
 
 """
+def update_variable(message):
+	var = message[1]
+	# If a put, update the variable (format = px3)
+	if (message[0] == "p"):
+		variables[var] = int(message[2])
+		return variables[var]
+	# Else, get the variable value (format = gx)
+	else:
+		return variables[var]
+
+
+"""
+
+"""
 def dump_variables(current_process, client_socket_index):
-	message = 'hi'
+	message = ''
 	for var in variables:
 		if (variables[var] != -1):
-			message += var + ": " + variables[var] + "\n"
+			message += var + ": " + str(variables[var]) + "\n"
+
+	print(message)
+
+	message = 'A'
 
 	message_obj = { 'message': message }
 	serialized_message = pickle.dumps(message_obj, -1)
