@@ -234,9 +234,9 @@ def receive_message(message, source, destination, timestamp):
 		delivered = True
 		# print("After deliver: Process timestamp = " + str(timestamp) + ", client timestamp = " + str(client_timestamp))
 
-	if (delivered):
-		while (delivered):
-			delivered = check_queue(destination)
+	# if (delivered):
+		# while (delivered):
+			# delivered = check_queue(destination)
 	mutex.release()
 
 def deliver_message(message, source, destination):
@@ -252,6 +252,8 @@ def deliver_message(message, source, destination):
 			if (int(process[0]) == source):
 				current_process = process
 		multicast(message, current_process)
+
+	check_queue(destination)
 
 '''
 Delays the message if necessary by checking the vector timestamps
