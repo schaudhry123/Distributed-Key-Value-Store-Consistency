@@ -129,9 +129,7 @@ def multicast(message, current_process):
 
 	for process in processes:
 		if (process[0] != "0"):
-			if (current_process[0] == "0"):
-				print("Sending to " + process[0])
-				unicast_send(message, current_process, process, vector_timestamp)
+			unicast_send(message, current_process, process, vector_timestamp)
 	if (current_process[0] == "0"):
 		print("Delivered " + message + " from process " + current_process[0] + ", system time is " + str(datetime.datetime.now()).split(".")[0])
 
@@ -227,7 +225,7 @@ def readMessages(conn):
 
 
 def receive_message(message, source, destination, timestamp):
-	print("Receiving " + message + " w/ timestamp " + str(timestamp) + " with own time " + str(vector_timestamp))
+	# print("Receiving " + message + " w/ timestamp " + str(timestamp) + " with own time " + str(vector_timestamp))
 	mutex.acquire()
 	delivered = False
 	# If the message should be delivered, deliver it
@@ -236,8 +234,9 @@ def receive_message(message, source, destination, timestamp):
 		delivered = True
 		# print("After deliver: Process timestamp = " + str(timestamp) + ", client timestamp = " + str(client_timestamp))
 
-	while (delivered):
-		delivered = check_queue(destination)
+	if (delivered):
+		while (delivered):
+			delivered = check_queue(destination)
 	mutex.release()
 
 def deliver_message(message, source, destination):
