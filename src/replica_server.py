@@ -18,6 +18,11 @@ vector_timestamp = 0
 message_queue = []
 mutex = Lock()
 
+output = ""
+output_file = None
+unused_field = random.uniform(1, 999)
+output_mutex = Lock()
+
 # Ran with commands "python basicMessages.py <#process_id>"
 def main(argv):
 	global server_id
@@ -34,8 +39,14 @@ def main(argv):
 			c = letters[i]
 			variables[c] = -1
 
-		# Create server thread
+		# Get server info
 		server = servers[server_id]
+
+		# Open up the output file for writing
+		global output_file
+		output_file = open("output_log" + str(server[0]) + ".txt", "w")
+
+		# Create server thread
 
 		try:
 			server_thread = Thread(target=setup_server, args = (server[1], int(server[2]), server[0]))
@@ -268,6 +279,22 @@ def receive_message(message, source, destination, timestamp, process_type, clien
 		deliver_message(message, source, destination, process_type, client_socket_index)
 		mutex.release()
 
+def write_to_file(message, message_type, value):
+	request_type = ""
+	request_var = ""
+	if (message[0] == "p"):
+		request_type = "put"
+	elif (message[0] == "g"):
+		request_type = "get"
+	if (request_type):
+		output_mutex.acquire()
+		if (message_type == "req"):
+			output += str(unused_field) + "," + str(client_socket_index) + "," + request_type + "," + request_var + str(time.time*1000) + "," + "req"
+		else:
+			output += str(unused_field) + "," + str(client_socket_index) + "," + request_type + "," + request_var + str(time.time*1000) + "," + "resp," + str(value)
+		output_file.write(output)
+		output_mutex.release()
+
 """
 """
 def deliver_message(message, source, destination, process_type, client_socket_index):
@@ -275,6 +302,18 @@ def deliver_message(message, source, destination, process_type, client_socket_in
 
 	# If delivering message from client
 	if (process_type == "client"):
+		request_type = ""
+		request_var = ""
+		if (message[0] == "p"):
+			request_type = "put"
+		elif (message[0] == "g"):
+			request_type = "get"
+		if (request_type):
+			output_mutex.acquire()
+			output += str(unused_field) + "," + str(client_socket_index) + "," + request_type + "," + request_var + str(time.time*1000) + "," + "req"
+			output_file.write(output)
+			output_mutex.release()
+
 		# Get current server info
 		current_process = find_current_process(destination)
 
@@ -408,6 +447,8 @@ def check_queue(process_id):
 def handler(signum, frame):
 	for i in range(len(sockets)):
 		sockets[i]['socket'].close()
+
+	output_file.close()
 	sys.exit(0)
 
 if __name__ == "__main__":
