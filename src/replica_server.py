@@ -20,7 +20,7 @@ mutex = Lock()
 
 output = ""
 output_file = None
-unused_field = random.uniform(1, 999)
+unused_field = int(random.uniform(1, 999))
 output_mutex = Lock()
 
 # Ran with commands "python basicMessages.py <#process_id>"
@@ -279,19 +279,24 @@ def receive_message(message, source, destination, timestamp, process_type, clien
 		deliver_message(message, source, destination, process_type, client_socket_index)
 		mutex.release()
 
-def write_to_file(message, message_type, value):
+def write_to_file(message, message_type, client_socket_index, value):
 	request_type = ""
-	request_var = ""
+	request_var = message[1]
 	if (message[0] == "p"):
 		request_type = "put"
 	elif (message[0] == "g"):
 		request_type = "get"
 	if (request_type):
 		output_mutex.acquire()
+		output = ""
+		# cur_time = '{:f}'.format(time.time()*1000)
+		cur_time = str(int(time.time() * 1000))
 		if (message_type == "req"):
-			output += str(unused_field) + "," + str(client_socket_index) + "," + request_type + "," + request_var + str(time.time*1000) + "," + "req"
+			output += str(unused_field) + "," + str(client_socket_index) + "," + request_type + "," + request_var + "," + cur_time + "," + "req,\n"
+		elif (message_type == "resp"):
+			output += str(unused_field) + "," + str(client_socket_index) + "," + request_type + "," + request_var + "," + cur_time + "," + "resp," + str(value) + "\n"
 		else:
-			output += str(unused_field) + "," + str(client_socket_index) + "," + request_type + "," + request_var + str(time.time*1000) + "," + "resp," + str(value)
+			print("Invalid message_type")
 		output_file.write(output)
 		output_mutex.release()
 
@@ -302,17 +307,18 @@ def deliver_message(message, source, destination, process_type, client_socket_in
 
 	# If delivering message from client
 	if (process_type == "client"):
-		request_type = ""
-		request_var = ""
-		if (message[0] == "p"):
-			request_type = "put"
-		elif (message[0] == "g"):
-			request_type = "get"
-		if (request_type):
-			output_mutex.acquire()
-			output += str(unused_field) + "," + str(client_socket_index) + "," + request_type + "," + request_var + str(time.time*1000) + "," + "req"
-			output_file.write(output)
-			output_mutex.release()
+		write_to_file(message, "req", client_socket_index, -1)
+		# request_type = ""
+		# request_var = ""
+		# if (message[0] == "p"):
+		# 	request_type = "put"
+		# elif (message[0] == "g"):
+		# 	request_type = "get"
+		# if (request_type):
+		# 	output_mutex.acquire()
+		# 	output += str(unused_field) + "," + str(client_socket_index) + "," + request_type + "," + request_var + str(time.time*1000) + "," + "req"
+		# 	output_file.write(output)
+		# 	output_mutex.release()
 
 		# Get current server info
 		current_process = find_current_process(destination)
@@ -326,6 +332,8 @@ def deliver_message(message, source, destination, process_type, client_socket_in
 				multicast(message, current_process, client_socket_index)
 
 				value = update_variable(message)
+
+				write_to_file(message, "resp", client_socket_index, value)
 
 				message_obj = { 'message': 'A - ' + str(value) }
 				serialized_message = pickle.dumps(message_obj, -1)
@@ -356,6 +364,8 @@ def deliver_message(message, source, destination, process_type, client_socket_in
 
 		# If you delivered the request to yourself, send acknowledgment/response to client
 		if (source == destination):
+			if (message[0] == "p" or message[0] == "g"):
+				write_to_file(message, "resp", client_socket_index, value)
 			# value = update_variable(message)
 
 			message_obj = { 'message': 'A - ' + str(value) }
