@@ -11,7 +11,7 @@ import string
 
 servers = []
 server_id = -1
-sockets = [] # sockets[i] = { 'id' = 1, 'socket'='', 'v_timestamp' = 1}
+sockets = [] # sockets[i] = { 'id' = 1, 'socket'='', 'open' = True}
 client_sockets = [] # Array of sockets of all clients connected
 variables = {}
 vector_timestamp = 0
@@ -47,7 +47,7 @@ def main(argv):
 		for i in range(len(letters)):
 			c = letters[i]
 			variables[c] = [-1,0]
-			
+
 
 		# Get server info
 		server = servers[server_id]
@@ -138,7 +138,7 @@ def create_connection(process):
 	s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 	try:
 		s.connect((process[1], int(process[2])))
-		sockets.append( { 'id': process[0], 'socket': s })
+		sockets.append( { 'id': process[0], 'socket': s, 'open': True })
 		return True
 	except:
 		print("Unable to connect to process " + str(process[0]) + ". Process may not be started yet.")
@@ -148,7 +148,6 @@ def create_connection(process):
 Multicasts a message out to all servers in the group given the message and current process info
 '''
 def multicast(message_obj, current_process, client_socket_index):
-
 	for process in servers:
 		if(process[0] != current_process[0]):
 			unicast_send(message_obj, current_process, process, client_socket_index)
@@ -159,18 +158,18 @@ def multicast(message_obj, current_process, client_socket_index):
 Unicasts a message to the specified process given the message, current process info, and the specified process id
 '''
 def unicast_send(message_obj, current_process, destinationInfo, client_socket_index):
-	process_id = current_process[0]		# Get the source
+	source = current_process[0]		# Get the source
 	found = False
 	# If the id is already in sockets
 	for i in range(len(sockets)):
 		if (destinationInfo[0] == sockets[i]['id']):
 			found = True
-			send_message(message_obj, process_id, sockets[i], client_socket_index)
+			send_message(message_obj, source, sockets[i], client_socket_index)
 
 	# Else open up a new socket to the process
 	if (not found):
 		if (create_connection(destinationInfo)):
-			send_message(message_obj, process_id, sockets[len(sockets)-1], client_socket_index)
+			send_message(message_obj, source, sockets[len(sockets)-1], client_socket_index)
 
 '''
 Sends a message object to a process given the destination process info, the message, and the source process id
@@ -178,7 +177,7 @@ Sends a message object to a process given the destination process info, the mess
 def send_message(message_obj, source, destination_process, client_socket_index):
 	msg = {
 			'message': message_obj['message'],
-			'source': source,
+			'source': int(source),
 			'destination': destination_process['id'],
 			'timestamp': message_obj['timestamp'],
 			'process_type': 'server',
@@ -186,13 +185,18 @@ def send_message(message_obj, source, destination_process, client_socket_index):
 			'message_id': message_obj['message_id'],
 			'acknowledgement': message_obj['acknowledgement'],
 	}
-	serialized_message = pickle.dumps(msg, -1)
-	destination_process['socket'].sendall(serialized_message)
 
-'''
-Sets up a server for the current process that listens and accepts connections from other servers,
-creating a new thread for each connection to a new process
-'''
+	if (destination_process['open']):
+		try:
+			serialized_message = pickle.dumps(msg, -1)
+			destination_process['socket'].sendall(serialized_message)
+		except Exception,e:
+			print("Error: Cannot communicate with server " + destination_process['id'] + ". Will assume crashed.")
+			for i in range(len(sockets)):
+				if (destination_process['id'] == sockets[i]['id']):
+					sockets[i]['open'] = False
+					break
+			print(str(e))
 
 
 '''
@@ -206,14 +210,7 @@ def readMessages(conn):
 
 		message_obj = pickle.loads(data)
 
-		# message = message_obj['message']
-		# source = int(message_obj['source'])
-		# destination = int(message_obj['destination'])
-		# timestamp = message_obj['timestamp']
 		process_type = message_obj['process_type']
-		# message_id = message_obj['message_id']
-		# acknowledgement = message_obj['acknowledgement']
-		# source = 0
 
 		client_socket_index = -1
 
@@ -239,8 +236,6 @@ def readMessages(conn):
 
 
 def receive_message(message_obj, client_socket_index):
-	# print("Receiving " + message + " w/ timestamp " + str(timestamp) + " with own time " + str(vector_timestamp))
-
 	# If the message should be delivered, deliver it
 	if (delay_message(message_obj, client_socket_index)):
 		mutex.acquire()
@@ -248,12 +243,9 @@ def receive_message(message_obj, client_socket_index):
 		mutex.release()
 
 
-
 """
 """
 def deliver_message(message_obj, client_socket_index):
-	
-
 	message = message_obj['message']
 	destination = int(message_obj['destination'])
 	process_type = message_obj['process_type']
@@ -262,17 +254,6 @@ def deliver_message(message_obj, client_socket_index):
 
 	# If delivering message from client
 	if (process_type == "client"):
-		# write_to_file(message, "req", client_socket_index, -1)
-
-
-		# If a put or a get request that requires communication with replicas multicast value/command
-		# if (message[0] == "p" or message[0] == "g"):
-				# print("Delivered " + message + " from client, system time is " + str(datetime.datetime.now()).split(".")[0])
-				#value = update_variable(message)
-				# multicast(message, current_process, client_socket_index)
-
-				#write_to_file(message, "resp", client_socket_index, value)
-	
 		# Else if a dump message
 		if (message == "d"):
 			dump_variables(current_process, client_socket_index)
@@ -281,13 +262,16 @@ def deliver_message(message_obj, client_socket_index):
 	else:
 
 		source = int(message_obj['source'])
-		timestamp = message_obj['timestamp']
 		message_id = message_obj['message_id']
 		acknowledgement = message_obj['acknowledgement']
 
 		# If a multicast from a process
 		if (not acknowledgement):
-			update_variable(message_obj)
+			# Update your variable depending on the message's timestamps
+			var = update_variable(message_obj)
+
+			message = message[0] + message[1] + str(var[0]) # format of px3 or gx1
+			timestamp = var[1]
 			destinationInfo = find_process(source)
 
 			message_obj2 = {
@@ -296,23 +280,29 @@ def deliver_message(message_obj, client_socket_index):
 							'message_id': message_id,
 							'acknowledgement': True
 					  	}
-
 			unicast_send(message_obj2, current_process, destinationInfo, client_socket_index)
-		# Else check message queue
+		# Else an acknowledgement
 		else:
+			var = update_variable(message_obj)
+
 			# Find message in message_queue
 			for msg in message_queue:
-				message_obj = msg[0]
-				if(message_obj['message_id'] == message_id):
+				msg_obj = msg[0]
+
+				# Find the message in the message_queue based off message_id
+				if(msg_obj['message_id'] == message_id):
+					message_queue.remove(msg)
+
+					var = update_variable(msg_obj)
 					msg[1] += 1
 					print("Acknowledgements = " + str(msg[1]))
-					if(message_obj['message'][0] == 'p'):
+					if(msg_obj['message'][0] == 'p'):
 						print("Comparing with " + str(writes))
 						if(msg[1] >= writes):
-							do_command(message_obj, client_socket_index)
-					elif(message_obj['message'][0] == 'g'):
+							respond_to_client(msg_obj, client_socket_index)
+					elif(msg_obj['message'][0] == 'g'):
 						if(msg[1] >= reads):
-							do_command(message_obj, client_socket_index)
+							respond_to_client(msg_obj, client_socket_index)
 					break
 
 
@@ -322,15 +312,17 @@ def deliver_message(message_obj, client_socket_index):
 
 """
 
-def do_command(message_obj, client_socket_index):
+def respond_to_client(message_obj, client_socket_index):
 	message = message_obj['message']
 	if (not 'source' in message_obj):
 		message_obj['source'] = message_obj['destination'] - 1
 
-	value = update_variable(message_obj)
+	# value = update_variable(message_obj)
+	var = variables[message[1]]
+	value = var[0]
 
 	write_to_file(message, "resp", client_socket_index, value)
-	message_obj = { 'message': 'A - ' + str(value) }
+	message_obj = { 'message': 'A - ' + str(var) }
 	serialized_message = pickle.dumps(message_obj, -1)
 	client_sockets[client_socket_index].sendall(serialized_message)
 
@@ -338,22 +330,31 @@ def do_command(message_obj, client_socket_index):
 def update_variable(message_obj):
 	message = message_obj['message']
 	timestamp = message_obj['timestamp']
-	source = message_obj['source']
-	destination = message_obj['destination']
+	source = int(message_obj['source'])
+	destination = int(message_obj['destination'])
+
 
 	var = message[1]
 	# If a put, update the variable (format = px3)
 	if (message[0] == "p"):
-		print("Comparing current time = " + str(variables[var][1]) + " to timestamp = " + str(timestamp))
+		print("Comparing current time of destination " + str(destination) + " = " + str(variables[var][1]) + " to source " + str(source) + " timestamp = " + str(timestamp))
 		if(variables[var][1] < timestamp):
 			variables[var][0] = int(message[2])
 			variables[var][1] = timestamp
-		elif (variables[var][1] == timestamp and source > destination):
+		elif (variables[var][1] == timestamp):
+			print("Equal timestamps!")
+			if (source > destination):
+				print("Using source value of " + message[2])
+				variables[var][0] = int(message[2])
+				variables[var][1] = timestamp
+			else:
+				print("Using destination value of " + str(variables[var][0]))
+		return variables[var]
+	# Else, message is a get
+	else:
+		if (timestamp > variables[var][1]):
 			variables[var][0] = int(message[2])
 			variables[var][1] = timestamp
-		return variables[var]
-	# Else, get the variable value (format = gx)
-	else:
 		return variables[var]
 
 
@@ -392,9 +393,12 @@ def delay_message(message_obj, client_socket_index):
 			message = message_obj['message']
 			# source = int(message_obj['source'])
 			destination = int(message_obj['destination'])
-			
+
+			# Get timestamp
 			var = message[1]
-			timestamp = variables[var][1] + 1
+			timestamp = variables[var][1]
+			if (message[0] == "p"):
+				timestamp += 1
 
 			message_ids_lock.acquire()
 			global message_ids
@@ -404,16 +408,17 @@ def delay_message(message_obj, client_socket_index):
 
 			message_queue.append( [{
 							'message': message,
+							'source': destination,
 							'destination': destination,
 							'timestamp': timestamp,
 							'client_socket_index': client_socket_index,
 							'message_id': message_id,
 					  	}, 0])
-				
+
 			current_process = find_process(destination)
 
 			# Message we multicast out to other servers, waiting for acknowledgemtn
-			message_obj2 = { 
+			message_obj2 = {
 							'message': message,
 							'timestamp': timestamp,
 							'message_id': message_id,
@@ -424,8 +429,8 @@ def delay_message(message_obj, client_socket_index):
 		# Else a dump
 		else:
 			return True
-
 	return False
+
 def setup_server(host, port, process_id):
 	connections = []
 
@@ -464,56 +469,14 @@ def write_to_file(message, message_type, client_socket_index, value):
 		output_file.write(output)
 		output_mutex.release()
 
-# def message_send(user_input, current_process):
-# 	global vector_timestamp
-
-# 	input_split = user_input.split()
-# 	message = ''
-
-# 	process_id = int(current_process[0])
-
-# 	# Multicasting
-# 	if (input_split[0] == "msend"):
-
-# 		message = user_input[6:]
-# 		if (current_process[0] != "1"):
-# 			unicast_send(message, current_process, servers[0], 0)
-# 			for process in servers:
-# 				print("Sent " + message + " to process " + str(process[0]) + ", system time is " + str(datetime.datetime.now()).split(".")[0])
-# 		else:
-# 			for process in servers:
-# 				print("Sent " + message + " to process " + str(process[0]) + ", system time is " + str(datetime.datetime.now()).split(".")[0])
-# 			mutex.acquire()
-# 			vector_timestamp += 1
-# 			multicast(message, current_process, )
-# 			mutex.release()
-
-# 	# Unicasting
-# 	elif (input_split[0] == "send" and input_split[1].isdigit()):
-# 		destination_id = int(input_split[1])
-# 		message = user_input[7:]
-# 		unicast_send(message, current_process, destination_id)
-# 	else:
-# 		print("msend <message>")
-# 		print("send <#> <message>")
-
 '''
-def check_queue(process_id):
-	msg = None
-
-	for message in message_queue:
-			msg_timestamp = int(message['timestamp'])
-			# print("Comparing msg w/ " + str(msg_timestamp) + " to current time of " + str(timestamp))
-			if (msg_timestamp == (vector_timestamp + 1) or (msg_timestamp == vector_timestamp)):
-				message_queue.remove(message)
-				msg = message
-				break
-	if (msg):
-		deliver_message(message['message'], message['source'], message['destination'], message['timestamp'], message['client_socket_index'])
-''' 
+SIGINT handler to close all sockets on signal
+'''
 def handler(signum, frame):
 	for i in range(len(sockets)):
 		sockets[i]['socket'].close()
+	for socket in client_sockets:
+		socket.close()
 
 	output_file.close()
 	sys.exit(0)

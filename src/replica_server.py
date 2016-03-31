@@ -432,6 +432,7 @@ def delay_message(message, source, destination, timestamp, process_type, client_
 							'destination': destination,
 							'timestamp': timestamp,
 							'client_socket_index': client_socket_index,
+							'id': sdlj
 					  	})
 
 	return False

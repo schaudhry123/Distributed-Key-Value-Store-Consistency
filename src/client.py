@@ -10,7 +10,7 @@ import Queue
 
 servers = []
 server_id = 0
-client_sockets = [] # client_sockets[i] = { 'id' = 1, 'socket'='', 'v_timestamp' = 1}
+server_socket = [None,None]
 vector_timestamps = []
 message_queue = []
 mutex = Lock()
@@ -113,19 +113,24 @@ def setup_client():
 				# If server is up, send message. Else connect to another server and kepe trying
 				destination = int(server[0])
 				sent_success = unicast_send(message, "client", server)
+
+				data = server_socket[1].recv(1024)
 				tries = 0 # To prevent client from spamming a bunch of servers
-				while (not sent_success is None and tries < 5):
+				while (not data and tries < 5):
+					print("Could not send to server number " + str(server_id))
+					print("Trying to connect to next highest server.")
 					server_id = parse_file(int(server[0])+1)
+					server = servers[server_id]
+					print("Trying to communicate with server number " + str(server_id))
 					sent_success = unicast_send(message, "client", server)
+					data = server_socket[1].recv(1024)
 					tries += 1
 
-				data = client_sockets[0]['socket'].recv(1024)
 				response = pickle.loads(data)
 				print(response['message'])
 
 	print("Exiting client")
-	for i in range(len(client_sockets)):
-		client_sockets[i]['socket'].close()
+	server_socket.close()
 
 '''
 '''
@@ -134,26 +139,28 @@ def create_connection(process):
 	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 	try:
+		print("Creating new connection with " + process[0] + ": " + str(process))
 		s.connect((process[1], int(process[2])))
-		client_sockets.append( { 'id': process[0], 'socket': s })
+		server_socket[0] = int(process[0])
+		server_socket[1] = s
 		return True
-	except:
+	except Exception,e:
 		print("Unable to connect to process " + str(process[0]) + ". Process may not be started yet.")
+		print(str(e))
 		return False
 
 '''
 Unicasts a message to the specified process given the message, current process info, and the specified process id
 '''
 def unicast_send(message, process, destinationInfo):
-	# If the id is already in client_sockets
-	for i in range(len(client_sockets)):
+	# If the id is already in server_socket
 		# print("Have already connected to " + str(destinationInfo))
-		if (destinationInfo[0] == client_sockets[i]['id']):
-			return send_message(message, process, client_sockets[i], 0)
+	if (int(destinationInfo[0]) == server_socket[0]):
+		return send_message(message, process, server_socket, 0)
 
 	# Else open up a new socket to the process
 	if (create_connection(destinationInfo)):
-		return send_message(message, process, client_sockets[len(client_sockets)-1], 0)
+		return send_message(message, process, server_socket, 0)
 
 '''
 Sends a message object to a process given the destination process info, the message, and the source process id
@@ -162,13 +169,13 @@ def send_message(message, source, destination_process, timestamp):
 	msg = {
 			'message': message,
 			'source': source,
-			'destination': destination_process['id'],
+			'destination': destination_process[0],
 			'timestamp': timestamp,
 			'process_type': "client",
 	}
 	seralized_message = pickle.dumps(msg, -1)
 	# print("Sent " + message + " to process " + str(destination_process['id']) + ", system time is " + str(datetime.datetime.now()).split(".")[0])
-	return destination_process['socket'].sendall(seralized_message)
+	return destination_process[1].sendall(seralized_message)
 
 '''
 Thread function that reads all messages sent from a process - responsible for only that process
