@@ -278,7 +278,7 @@ def deliver_message(message_obj, client_socket_index):
 
 			# If current process is the sequencer, deliver and multicast message to all other servers
 			if (destination == 1):
-				time.sleep((random.uniform(min_delay, max_delay)/1000.0))	# Random network delay
+				time.sleep((random.uniform(min_delay, max_delay*2)/1000.0))	# Random network delay
 
 				vector_timestamp += 1
 

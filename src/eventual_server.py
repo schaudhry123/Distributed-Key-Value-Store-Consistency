@@ -48,7 +48,6 @@ def main(argv):
 			c = letters[i]
 			variables[c] = [0,0]
 
-
 		# Get server info
 		server = servers[server_id]
 
