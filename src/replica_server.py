@@ -319,8 +319,6 @@ def deliver_message(message, source, destination, process_type, client_socket_in
 
 		# If a put or a get request that requires communication with replicas
 		if (message[0] == "p" or message[0] == "g"):
-			write_to_file(message, "req", client_socket_index, -1)
-
 			# If the sequencer, deliver and multicast message to all other servers
 			if (destination == 1):
 
@@ -408,6 +406,7 @@ def delay_message(message, source, destination, timestamp, process_type, client_
 	if (process_type == "server"):
 		time.sleep((random.uniform(min_delay, max_delay)/1000.0))	# Random network delay
 	elif (process_type == "client"):
+		write_to_file(message, "req", client_socket_index, -1)
 		return True
 
 	mutex.acquire()
