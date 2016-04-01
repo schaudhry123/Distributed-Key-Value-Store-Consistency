@@ -45,7 +45,7 @@ def main(argv):
 
 		# Open up the output file for writing
 		global output_file
-		output_file = open("../logs/output_log" + str(server[0]) + ".txt", "w")
+		output_file = open("../logs/linearizability/output_log" + str(server[0]) + ".txt", "w")
 
 		# Create server thread
 
