@@ -1,4 +1,12 @@
 Client,Request,Key,Timestamp,Action,Value
-0,put,x,1459482535052,req,1
-2,get,x,1459482546564,req,
-1,put,x,1459482548764,req,9
+2,get,x,1459484487654,req,
+0,put,x,1459484489374,req,5
+0,put,x,1459484489377,resp,5
+2,get,x,1459484496245,resp,5
+3,put,x,1459484497334,req,1
+1,get,x,1459484501263,req,
+1,get,x,1459484501264,resp,1
+3,put,x,1459484505648,resp,1
+2,get,x,1459484506655,req,
+2,get,x,1459484517712,resp,1
+1,get,x,1459485704083,req,

@@ -38,7 +38,7 @@ def main(argv):
 		letters = string.ascii_lowercase
 		for i in range(len(letters)):
 			c = letters[i]
-			variables[c] = 0
+			variables[c] = -1
 
 		# Get server info
 		server = servers[server_id]
@@ -118,40 +118,6 @@ def setup_client(current_process):
 	print("Exiting client")
 	for i in range(len(sockets)):
 		sockets[i]['socket'].close()
-
-# def message_send(user_input, current_process):
-# 	global vector_timestamp
-
-# 	input_split = user_input.split()
-# 	message = ''
-
-# 	process_id = int(current_process[0])
-
-# 	# Multicasting
-# 	if (input_split[0] == "msend"):
-
-# 		message = user_input[6:]
-# 		if (current_process[0] != "1"):
-# 			unicast_send(message, current_process, servers[0], 0)
-# 			for process in servers:
-# 				print("Sent " + message + " to process " + str(process[0]) + ", system time is " + str(datetime.datetime.now()).split(".")[0])
-# 		else:
-# 			for process in servers:
-# 				print("Sent " + message + " to process " + str(process[0]) + ", system time is " + str(datetime.datetime.now()).split(".")[0])
-# 			mutex.acquire()
-# 			vector_timestamp += 1
-# 			multicast(message, current_process, )
-# 			mutex.release()
-
-# 	# Unicasting
-# 	elif (input_split[0] == "send" and input_split[1].isdigit()):
-# 		destination_id = int(input_split[1])
-# 		message = user_input[7:]
-# 		unicast_send(message, current_process, destination_id)
-# 	else:
-# 		print("msend <message>")
-# 		print("send <#> <message>")
-
 
 '''
 '''
@@ -266,56 +232,37 @@ def readMessages(conn):
 				client_sockets.append(conn)
 
 
-		receive_thread = Thread(target=receive_message, args = (message, source, destination, timestamp, process_type, client_socket_index))
+		receive_thread = Thread(target=receive_message, args = (message_obj, client_socket_index))
+			# message, source, destination, timestamp, process_type, client_socket_index))
 		receive_thread.daemon = True
 		receive_thread.start()
 
 
-def receive_message(message, source, destination, timestamp, process_type, client_socket_index):
+def receive_message(message_obj, client_socket_index):
 	# print("Receiving " + message + " w/ timestamp " + str(timestamp) + " with own time " + str(vector_timestamp))
 
 	# If the message should be delivered, deliver it
-	if (delay_message(message, source, destination, timestamp, process_type, client_socket_index)):
+	if (delay_message(message_obj, client_socket_index)):
 		mutex.acquire()
-		deliver_message(message, source, destination, process_type, client_socket_index)
+		deliver_message(message_obj, client_socket_index)
 		mutex.release()
 
-def write_to_file(message, message_type, client_socket_index, value):
-	request_type = ""
-	if (message[0] == "p"):
-		request_type = "put"
-	elif (message[0] == "g"):
-		request_type = "get"
-
-	output_mutex.acquire()
-	if (request_type):
-		request_var = message[1]
-		cur_time = str(int(time.time() * 1000))
-
-		output = str(session_num) + "," + str(client_socket_index) + "," + request_type + "," + request_var + "," + cur_time + "," + message_type + ","
-
-		# If a put request or a response, add the value
-		if (request_type == "put" or message_type == "resp"):
-			if (value == -1):
-				value = int(message[2])
-			output += str(value)
-		output += "\n"
-
-		output_file.write(output)
-		output_file.flush()
-	else:
-		print("Invalid message_type")
-	output_mutex.release()
-
 """
 """
-def deliver_message(message, source, destination, process_type, client_socket_index):
+def deliver_message(message_obj, client_socket_index):
 	global vector_timestamp
+
+	message = message_obj['message']
+	destination = int(message_obj['destination'])
+	timestamp = int(message_obj['timestamp'])
+	process_type = message_obj['process_type']
 
 	# If delivering message from client
 	if (process_type == "client"):
 		# Get current server info
 		current_process = find_current_process(destination)
+		if (current_process is None):
+			print("Current process is none?")
 
 		# If a put or a get request that requires communication with replicas
 		if (message[0] == "p" or message[0] == "g"):
@@ -343,6 +290,8 @@ def deliver_message(message, source, destination, process_type, client_socket_in
 
 	# Else delivering message from server (sequencer)
 	else:
+		source = int(message_obj['source'])
+
 		# If not the sequencer, update the timestamp. Else multicast message out if not sent from itself
 		vector_timestamp += 1
 		value = -1
@@ -355,6 +304,7 @@ def deliver_message(message, source, destination, process_type, client_socket_in
 
 		if (destination == 1):
 			current_process = find_current_process(source)
+			print(current_process[0])
 			multicast(message, current_process, client_socket_index)
 
 		# If you delivered the request to yourself, send acknowledgment/response to client
@@ -368,41 +318,13 @@ def deliver_message(message, source, destination, process_type, client_socket_in
 
 		check_queue(destination)
 
-"""
-
-"""
-def update_variable(message):
-	var = message[1]
-	# If a put, update the variable (format = px3)
-	if (message[0] == "p"):
-		variables[var] = int(message[2])
-		return variables[var]
-	# Else, get the variable value (format = gx)
-	else:
-		return variables[var]
-
-
-"""
-
-"""
-def dump_variables(current_process, client_socket_index):
-	message = ''
-	for var in variables:
-		if (variables[var] != -1):
-			message += var + ": " + str(variables[var]) + "\n"
-
-	print(message)
-
-	message = 'A'
-
-	message_obj = { 'message': message }
-	serialized_message = pickle.dumps(message_obj, -1)
-	client_sockets[client_socket_index].sendall(serialized_message)
-
 '''
 Delays the message if necessary by checking the vector timestamps
 '''
-def delay_message(message, source, destination, timestamp, process_type, client_socket_index):
+def delay_message(message_obj, client_socket_index):
+	process_type = message_obj['process_type']
+	message = message_obj['message']
+
 	if (process_type == "server"):
 		time.sleep((random.uniform(min_delay, max_delay)/1000.0))	# Random network delay
 	elif (process_type == "client"):
@@ -412,6 +334,10 @@ def delay_message(message, source, destination, timestamp, process_type, client_
 	mutex.acquire()
 	v_timestamp = vector_timestamp
 	mutex.release()
+
+	source = int(message_obj['source'])
+	destination = int(message_obj['destination'])
+	timestamp = int(message_obj['timestamp'])
 
 	if (destination == 1):
 		return True
@@ -448,6 +374,62 @@ def check_queue(process_id):
 				break
 	if (msg):
 		deliver_message(message['message'], message['source'], message['destination'], message['timestamp'], message['client_socket_index'])
+
+"""
+Updates the variable if a put and returns the value, else returns the value on a get
+"""
+def update_variable(message):
+	var = message[1]
+	# If a put, update the variable (format = px3)
+	if (message[0] == "p"):
+		variables[var] = int(message[2])
+		return variables[var]
+	# Else, get the variable value (format = gx)
+	else:
+		return variables[var]
+
+
+"""
+Dumps all variables that have been initialized
+"""
+def dump_variables(current_process, client_socket_index):
+	message = ''
+	for var in variables:
+		if (variables[var] != -1):
+			message += var + ": " + str(variables[var]) + "\n"
+
+	print(message)
+
+	message = 'A'
+
+	message_obj = { 'message': message }
+	serialized_message = pickle.dumps(message_obj, -1)
+	client_sockets[client_socket_index].sendall(serialized_message)
+
+def write_to_file(message, message_type, client_socket_index, value):
+	request_type = ""
+	if (message[0] == "p"):
+		request_type = "put"
+	elif (message[0] == "g"):
+		request_type = "get"
+
+	output_mutex.acquire()
+	if (request_type):
+		request_var = message[1]
+		cur_time = str(int(time.time() * 1000))
+
+		output = str(session_num) + "," + str(client_socket_index) + "," + request_type + "," + request_var + "," + cur_time + "," + message_type + ","
+
+		# If a put request or a response, add the value
+		if (request_type == "put" or message_type == "resp"):
+			if (value == -1):
+				value = int(message[2])
+			output += str(value)
+		output += "\n"
+
+		output_file.write(output)
+		output_file.flush()
+	output_mutex.release()
 
 def handler(signum, frame):
 	for i in range(len(sockets)):
