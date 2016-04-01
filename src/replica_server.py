@@ -13,7 +13,7 @@ servers = []
 server_id = -1
 sockets = [] # sockets[i] = { 'id' = 1, 'socket'='', 'v_timestamp' = 1}
 client_sockets = [] # Array of sockets of all clients connected
-variables = {}
+variables = {} # Dictionary mapping variables to values
 vector_timestamp = 0
 message_queue = []
 mutex = Lock()
@@ -23,7 +23,7 @@ output_file = None
 session_num = 0
 output_mutex = Lock()
 
-# Ran with commands "python basicMessages.py <#process_id>"
+# Ran with commands "python replica_server.py <#process_id>"
 def main(argv):
 	global server_id, session_num
 	server_id = parse_file(int(argv[0]))			# Get all servers info
@@ -92,6 +92,9 @@ def parse_file(server_num):
 			counter += 1
 	return index
 
+"""
+Given an id, finds the process/server with that id and returns its info
+"""
 def find_current_process(_id):
 	current_process = None
 	for process in servers:
@@ -120,6 +123,9 @@ def setup_client(current_process):
 		sockets[i]['socket'].close()
 
 '''
+Creates a new connection with a process given its info (id, host, port)
+Returns true if a socket connection could be made
+Appends the new socket and id information to the sockets list
 '''
 def create_connection(process):
 	# print("Trying to connect to " + process[0])
@@ -134,10 +140,11 @@ def create_connection(process):
 		return False
 
 '''
-Multicasts a message out to all servers in the group given the message and current process info
+Multicasts a message out to all processes (except the sequencer)
+Will only be called by the sequencer
+"Mocks" sending a message to itself, simulates a delivery with no wait
 '''
 def multicast(message, current_process, client_socket_index):
-
 	for process in servers:
 		if (process[0] != "1"):
 			unicast_send(message, current_process, process, vector_timestamp, client_socket_index)
@@ -145,7 +152,9 @@ def multicast(message, current_process, client_socket_index):
 		print("Delivered " + message + " from process " + current_process[0] + ", system time is " + str(datetime.datetime.now()).split(".")[0])
 
 '''
-Unicasts a message to the specified process given the message, current process info, and the specified process id
+Finds the destination's socket in list of sockets
+If the socket is not there, creates a new connection
+Calls send_message to actually send message over the socket
 '''
 def unicast_send(message, current_process, destinationInfo, timestamp, client_socket_index):
 	process_id = current_process[0]
@@ -162,7 +171,7 @@ def unicast_send(message, current_process, destinationInfo, timestamp, client_so
 			send_message(message, process_id, sockets[len(sockets)-1], timestamp, client_socket_index)
 
 '''
-Sends a message object to a process given the destination process info, the message, and the source process id
+Actually sends the message and other information over a socket connecting to the destination
 '''
 def send_message(message, source, destination_process, timestamp, client_socket_index):
 	msg = {
@@ -199,6 +208,7 @@ def setup_server(host, port, process_id):
 
 '''
 Thread function that reads all messages sent from a process - responsible for only that process
+Creates a new thread for every message received
 '''
 def readMessages(conn):
 	while True:
@@ -208,18 +218,13 @@ def readMessages(conn):
 
 		message_obj = pickle.loads(data)
 
-		message = message_obj['message']
-		destination = int(message_obj['destination'])
-		timestamp = message_obj['timestamp']
 		process_type = message_obj['process_type']
-		source = 0
-
 		client_socket_index = -1
 
+		# If message is from a server, message includes a client_socket_index
 		if (process_type == "server"):
-			source = int(message_obj['source'])
 			client_socket_index = message_obj['client_socket_index']
-		# Else, sent from a client
+		# Else message is sent from a client, so find this client_socket
 		else:
 			# Check if the socket is already in client_sockets
 			for index in range(len(client_sockets)):
@@ -237,8 +242,12 @@ def readMessages(conn):
 		receive_thread.daemon = True
 		receive_thread.start()
 
-
+"""
+Delays the message and delivers it if the conditions have been met
+"""
 def receive_message(message_obj, client_socket_index):
+	# message = message_obj['message']
+	# timestamp = message_obj['timestamp']
 	# print("Receiving " + message + " w/ timestamp " + str(timestamp) + " with own time " + str(vector_timestamp))
 
 	# If the message should be delivered, deliver it
@@ -248,6 +257,8 @@ def receive_message(message_obj, client_socket_index):
 		mutex.release()
 
 """
+Handles the delivering of a message, broadcasting it if necessary
+If a message is from a client, sends the message to the sequencer
 """
 def deliver_message(message_obj, client_socket_index):
 	global vector_timestamp
@@ -261,16 +272,16 @@ def deliver_message(message_obj, client_socket_index):
 	if (process_type == "client"):
 		# Get current server info
 		current_process = find_current_process(destination)
-		if (current_process is None):
-			print("Current process is none?")
 
-		# If a put or a get request that requires communication with replicas
+		# If a put or a get request that requires communication with other replica servers
 		if (message[0] == "p" or message[0] == "g"):
-			# If the sequencer, deliver and multicast message to all other servers
+
+			# If current process is the sequencer, deliver and multicast message to all other servers
 			if (destination == 1):
+				time.sleep((random.uniform(min_delay, max_delay)/1000.0))	# Random network delay
 
 				vector_timestamp += 1
-				# print("Delivered " + message + " from client, system time is " + str(datetime.datetime.now()).split(".")[0])
+
 				multicast(message, current_process, client_socket_index)
 
 				value = update_variable(message)
@@ -278,34 +289,32 @@ def deliver_message(message_obj, client_socket_index):
 				if (message[0] == "g"):
 					message += str(value)
 
+				# After multicasting, respond to the client
 				respond_to_client(message, client_socket_index, value)
 
-				# write_to_file(message, "resp", client_socket_index, value)
-
-				# message_obj = { 'message': 'A', 'value': str(value) }
-				# serialized_message = pickle.dumps(message_obj, -1)
-				# client_sockets[client_socket_index].sendall(serialized_message)
 			# Else, send it to the sequencer for total order broadcasting
 			else:
 				sequencer = find_current_process(1)
 				unicast_send(message, current_process, servers[0], vector_timestamp, client_socket_index)
-		# Else if a dump message
+		# Else if client request is a dump, dump variables
 		elif (message == "d"):
 			dump_variables(current_process, client_socket_index)
 
-	# Else delivering message from server (sequencer)
+	# Else delivering message from a server
 	else:
 		source = int(message_obj['source'])
 
-		# If not the sequencer, update the timestamp. Else multicast message out if not sent from itself
+		# Update the timestamp
 		vector_timestamp += 1
+
 		value = -1
 
 		print("Delivered " + message + " from process " + str(source) + ", system time is " + str(datetime.datetime.now()).split(".")[0])
 
-		# Actually deliver it --- i.e. write to variable
+		# Update the variable if message is a write
 		value = update_variable(message)
 
+		# If the sequencer, multicast message out to others
 		if (destination == 1):
 			current_process = find_current_process(source)
 			print(current_process[0])
@@ -314,36 +323,37 @@ def deliver_message(message_obj, client_socket_index):
 		# If you delivered the request to yourself, send acknowledgment/response to client
 		if (source == destination):
 			respond_to_client(message, client_socket_index, value)
-			# 	write_to_file(message, "resp", client_socket_index, value)
 
-			# message_obj = { 'message': 'A', 'value': str(value) }
-			# serialized_message = pickle.dumps(message_obj, -1)
-			# client_sockets[client_socket_index].sendall(serialized_message)
-
+		# Check the message_queue for any pending messages to see if timestamp conditions have been filled
 		check_queue(destination)
 
 """
-Responds back to the client, writing to the output
+Responds back to the client, writing the response to the output log file
 """
 def respond_to_client(message, client_socket_index, value):
 	write_to_file(message, "resp", client_socket_index, value)
 
+	# Send back acknowledgment with returned value
 	message_obj = { 'message': 'A', 'value': str(value) }
 	serialized_message = pickle.dumps(message_obj, -1)
 	client_sockets[client_socket_index].sendall(serialized_message)
 
 '''
-Delays the message if necessary by checking the vector timestamps
+Immediately returns True for delivering if message is from a client
+If from a server, adds random network delay, delivering if the sequencer or timestamps match up
+If timestamps do not match, adds message to the message_queue
 '''
 def delay_message(message_obj, client_socket_index):
 	process_type = message_obj['process_type']
 	message = message_obj['message']
 
-	if (process_type == "server"):
-		time.sleep((random.uniform(min_delay, max_delay)/1000.0))	# Random network delay
-	elif (process_type == "client"):
+	# If the message is from the client, log the request and deliver the message
+	if (process_type == "client"):
 		write_to_file(message, "req", client_socket_index, -1)
 		return True
+
+	# Else, message is from server
+	time.sleep((random.uniform(min_delay, max_delay)/1000.0))	# Random network delay
 
 	mutex.acquire()
 	v_timestamp = vector_timestamp
@@ -353,14 +363,16 @@ def delay_message(message_obj, client_socket_index):
 	destination = int(message_obj['destination'])
 	timestamp = int(message_obj['timestamp'])
 
+	# If sequencer is receiving the message, immediately deliver
 	if (destination == 1):
 		return True
 
-	# Deliver the message
+	# If timestamps match up, deliver the message
 	if (timestamp == (v_timestamp + 1) or timestamp == v_timestamp):
 		return True
 
-	# print("Putting '" + message + "' into queue with timestamp = " + str(timestamp))
+	# Put message into the queue until timestamp has been updated enough
+	# print("Putting message into queue")
 	message_queue.append({
 							'message': message,
 							'source': source,
