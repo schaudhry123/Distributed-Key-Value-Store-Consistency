@@ -15,10 +15,14 @@ vector_timestamps = []
 message_queue = []
 mutex = Lock()
 
+sock = None
+client_num = -1
+
 # Ran with commands "python basicMessages.py <#process_id>"
 def main(argv):
-	global server_id
+	global server_id, client_num, sock
 	server_id = parse_file(int(argv[0]))
+	client_num = int(argv[1])
 
 	# If process id could not be found
 	if (server_id == -1):
@@ -27,6 +31,9 @@ def main(argv):
 	else:
 		# Create server and client threads
 		try:
+			sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+			sock.sendto("START,SessionNumber1", ("127.0.0.1", 1234))
+
 			client_thread = Thread(target=setup_client, args = ())
 			client_thread.daemon = True
 			client_thread.start()
@@ -85,6 +92,7 @@ def setup_client():
 		if (user_input):
 			input_split = user_input.split()
 			message = ''
+			value = ''
 
 			process_id = int(server[0])
 
@@ -92,14 +100,15 @@ def setup_client():
 			if (len(input_split) > 1 and input_split[1].isalpha()):
 				if (len(input_split) == 3 and input_split[0] == "put" and input_split[2].isdigit()):
 					message = "p" + input_split[1] + input_split[2]
+					value = input_split[2]
 					valid = True
 				elif (input_split[0] == "get"):
 					message = "g" + input_split[1]
 					valid = True
 			elif (input_split[0] == "delay" and len(input_split) > 1 and input_split[1].isdigit()):
-				print("delaying ")
+				print("Delaying")
 				time.sleep(float(input_split[1])/1000.0)	# Random network delay
-				print("done")
+				print("Done")
 				valid = True
 			elif (user_input == "dump"):
 				message = "d"
@@ -110,6 +119,11 @@ def setup_client():
 				print("put <var> <value>, get <var>, delay <ms>, dump")
 
 			if (message):
+				if (message[0] == "p" or message[0] == "g"):
+					visualizer = "SessionNumber1," + str(client_num) + "," + input_split[0] + "," + input_split[1] + "," + str(int(time.time() * 1000)) + ",req," + value
+					# print(visualizer)
+					sock.sendto(visualizer, ("127.0.0.1", 1234))
+
 				# If server is up, send message. Else connect to another server and kepe trying
 				destination = int(server[0])
 				sent_success = unicast_send(message, "client", server)
@@ -127,7 +141,15 @@ def setup_client():
 					tries += 1
 
 				response = pickle.loads(data)
-				print(response['message'])
+				response_print = response['message']
+
+				if ('value' in response):
+					response_print += ' - ' + response['value']
+					visualizer = "SessionNumber1," + str(client_num) + "," + input_split[0] + "," + input_split[1] + "," + str(int(time.time() * 1000)) + ",resp," + response['value']
+					# print(visualizer)
+					sock.sendto(visualizer, ("127.0.0.1", 1234))
+
+				print(response_print)
 
 	print("Exiting client")
 	server_socket.close()
@@ -139,7 +161,7 @@ def create_connection(process):
 	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 	try:
-		print("Creating new connection with " + process[0] + ": " + str(process))
+		# print("Creating new connection with " + process[0] + ": " + str(process))
 		s.connect((process[1], int(process[2])))
 		server_socket[0] = int(process[0])
 		server_socket[1] = s
@@ -286,7 +308,7 @@ def handler(signum, frame):
 
 if __name__ == "__main__":
 	signal.signal(signal.SIGINT, handler)
-	if (len(sys.argv) != 2):
-		print("python " + sys.argv[0] + " <process #>")
+	if (len(sys.argv) != 3):
+		print("python " + sys.argv[0] + " <process #>" + " <client #>")
 	else:
 		main(sys.argv[1:])

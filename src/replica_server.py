@@ -20,13 +20,14 @@ mutex = Lock()
 
 output = ""
 output_file = None
-unused_field = int(random.uniform(1, 999))
+session_num = 0
 output_mutex = Lock()
 
 # Ran with commands "python basicMessages.py <#process_id>"
 def main(argv):
-	global server_id
+	global server_id, session_num
 	server_id = parse_file(int(argv[0]))			# Get all servers info
+	session_num = (server_id+1) * 100
 
 	# If process_id could not be found
 	if (server_id == -1):
@@ -37,14 +38,14 @@ def main(argv):
 		letters = string.ascii_lowercase
 		for i in range(len(letters)):
 			c = letters[i]
-			variables[c] = -1
+			variables[c] = 0
 
 		# Get server info
 		server = servers[server_id]
 
 		# Open up the output file for writing
 		global output_file
-		output_file = open("output_log" + str(server[0]) + ".txt", "w")
+		output_file = open("../logs/output_log" + str(server[0]) + ".txt", "w")
 
 		# Create server thread
 
@@ -281,24 +282,30 @@ def receive_message(message, source, destination, timestamp, process_type, clien
 
 def write_to_file(message, message_type, client_socket_index, value):
 	request_type = ""
-	request_var = message[1]
 	if (message[0] == "p"):
 		request_type = "put"
 	elif (message[0] == "g"):
 		request_type = "get"
+
+	output_mutex.acquire()
 	if (request_type):
-		output_mutex.acquire()
-		output = ""
-		# cur_time = '{:f}'.format(time.time()*1000)
+		request_var = message[1]
 		cur_time = str(int(time.time() * 1000))
-		if (message_type == "req"):
-			output += str(unused_field) + "," + str(client_socket_index) + "," + request_type + "," + request_var + "," + cur_time + "," + "req,\n"
-		elif (message_type == "resp"):
-			output += str(unused_field) + "," + str(client_socket_index) + "," + request_type + "," + request_var + "," + cur_time + "," + "resp," + str(value) + "\n"
-		else:
-			print("Invalid message_type")
+
+		output = str(session_num) + "," + str(client_socket_index) + "," + request_type + "," + request_var + "," + cur_time + "," + message_type + ","
+
+		# If a put request or a response, add the value
+		if (request_type == "put" or message_type == "resp"):
+			if (value == -1):
+				value = int(message[2])
+			output += str(value)
+		output += "\n"
+
 		output_file.write(output)
-		output_mutex.release()
+		output_file.flush()
+	else:
+		print("Invalid message_type")
+	output_mutex.release()
 
 """
 """
@@ -307,26 +314,16 @@ def deliver_message(message, source, destination, process_type, client_socket_in
 
 	# If delivering message from client
 	if (process_type == "client"):
-		write_to_file(message, "req", client_socket_index, -1)
-		# request_type = ""
-		# request_var = ""
-		# if (message[0] == "p"):
-		# 	request_type = "put"
-		# elif (message[0] == "g"):
-		# 	request_type = "get"
-		# if (request_type):
-		# 	output_mutex.acquire()
-		# 	output += str(unused_field) + "," + str(client_socket_index) + "," + request_type + "," + request_var + str(time.time*1000) + "," + "req"
-		# 	output_file.write(output)
-		# 	output_mutex.release()
-
 		# Get current server info
 		current_process = find_current_process(destination)
 
 		# If a put or a get request that requires communication with replicas
 		if (message[0] == "p" or message[0] == "g"):
+			write_to_file(message, "req", client_socket_index, -1)
+
 			# If the sequencer, deliver and multicast message to all other servers
 			if (destination == 1):
+
 				vector_timestamp += 1
 				# print("Delivered " + message + " from client, system time is " + str(datetime.datetime.now()).split(".")[0])
 				multicast(message, current_process, client_socket_index)
@@ -335,7 +332,7 @@ def deliver_message(message, source, destination, process_type, client_socket_in
 
 				write_to_file(message, "resp", client_socket_index, value)
 
-				message_obj = { 'message': 'A - ' + str(value) }
+				message_obj = { 'message': 'A', 'value': str(value) }
 				serialized_message = pickle.dumps(message_obj, -1)
 				client_sockets[client_socket_index].sendall(serialized_message)
 			# Else, send it to the sequencer for total order broadcasting
@@ -366,9 +363,8 @@ def deliver_message(message, source, destination, process_type, client_socket_in
 		if (source == destination):
 			if (message[0] == "p" or message[0] == "g"):
 				write_to_file(message, "resp", client_socket_index, value)
-			# value = update_variable(message)
 
-			message_obj = { 'message': 'A - ' + str(value) }
+			message_obj = { 'message': 'A', 'value': str(value) }
 			serialized_message = pickle.dumps(message_obj, -1)
 			client_sockets[client_socket_index].sendall(serialized_message)
 
@@ -432,7 +428,6 @@ def delay_message(message, source, destination, timestamp, process_type, client_
 							'destination': destination,
 							'timestamp': timestamp,
 							'client_socket_index': client_socket_index,
-							'id': sdlj
 					  	})
 
 	return False
