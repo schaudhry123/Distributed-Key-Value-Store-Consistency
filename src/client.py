@@ -131,11 +131,10 @@ def setup_client():
 				data = server_socket[1].recv(1024)
 				tries = 0 # To prevent client from spamming a bunch of servers
 				while (not data and tries < 5):
-					print("Could not send to server number " + str(server_id))
-					print("Trying to connect to next highest server.")
+					print("Could not send to server number " + str(server_id+1) + ".")
+					print("Trying to connect to next highest server " + str(server_id+1) + ".")
 					server_id = parse_file(int(server[0])+1)
 					server = servers[server_id]
-					print("Trying to communicate with server number " + str(server_id))
 					sent_success = unicast_send(message, "client", server)
 					data = server_socket[1].recv(1024)
 					tries += 1

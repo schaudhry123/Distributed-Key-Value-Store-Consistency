@@ -28,7 +28,7 @@ output_file = None
 session_num = 0
 output_mutex = Lock()
 
-# Ran with commands "python basicMessages.py <#process_id>"
+# Ran with commands "python eventual_server.py <process #> <# writes> <# reads>"
 def main(argv):
 	global server_id, writes, reads, session_num
 	server_id = parse_file(int(argv[0]))			# Get all servers info
@@ -46,7 +46,7 @@ def main(argv):
 		letters = string.ascii_lowercase
 		for i in range(len(letters)):
 			c = letters[i]
-			variables[c] = [0,-1]
+			variables[c] = [0,0]
 
 
 		# Get server info
@@ -54,7 +54,7 @@ def main(argv):
 
 		# Open up the output file for writing
 		global output_file
-		output_file = open("../logs/output_log" + str(server[0]) + ".txt", "w")
+		output_file = open("../logs/eventual/output_log" + str(server[0]) + ".txt", "w")
 
 		# Create server thread
 
@@ -325,13 +325,8 @@ def respond_to_client(message_obj, client_socket_index):
 	value = var[0]
 
 	# If variable has been found
-	if (value != -1):
-		write_to_file(message, "resp", client_socket_index, value)
-		message_obj = { 'message': 'A - ' + str(var) }
-	# Else respond with nothing
-	else:
-		write_to_file(message, "resp", client_socket_index, "")
-		message_obj = { 'message': 'A - ' + message[1] + " not found" }
+	write_to_file(message, "resp", client_socket_index, value)
+	message_obj = { 'message': 'A', 'value': str(var) }
 	serialized_message = pickle.dumps(message_obj, -1)
 	client_sockets[client_socket_index].sendall(serialized_message)
 
@@ -386,8 +381,7 @@ def update_variable(message_obj):
 def dump_variables(current_process, client_socket_index):
 	message = ''
 	for var in variables:
-		if (variables[var][1] != -1):
-			message += var + ": " + str(variables[var]) + "\n"
+		message += var + ": " + str(variables[var]) + "\n"
 
 	print(message)
 
