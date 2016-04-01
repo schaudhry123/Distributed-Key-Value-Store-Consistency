@@ -275,11 +275,16 @@ def deliver_message(message_obj, client_socket_index):
 
 				value = update_variable(message)
 
-				write_to_file(message, "resp", client_socket_index, value)
+				if (message[0] == "g"):
+					message += str(value)
 
-				message_obj = { 'message': 'A', 'value': str(value) }
-				serialized_message = pickle.dumps(message_obj, -1)
-				client_sockets[client_socket_index].sendall(serialized_message)
+				respond_to_client(message, client_socket_index, value)
+
+				# write_to_file(message, "resp", client_socket_index, value)
+
+				# message_obj = { 'message': 'A', 'value': str(value) }
+				# serialized_message = pickle.dumps(message_obj, -1)
+				# client_sockets[client_socket_index].sendall(serialized_message)
 			# Else, send it to the sequencer for total order broadcasting
 			else:
 				sequencer = find_current_process(1)
@@ -299,8 +304,7 @@ def deliver_message(message_obj, client_socket_index):
 		print("Delivered " + message + " from process " + str(source) + ", system time is " + str(datetime.datetime.now()).split(".")[0])
 
 		# Actually deliver it --- i.e. write to variable
-		if (message[0] == "p" or message[0] == "g"):
-			value = update_variable(message)
+		value = update_variable(message)
 
 		if (destination == 1):
 			current_process = find_current_process(source)
@@ -309,14 +313,24 @@ def deliver_message(message_obj, client_socket_index):
 
 		# If you delivered the request to yourself, send acknowledgment/response to client
 		if (source == destination):
-			if (message[0] == "p" or message[0] == "g"):
-				write_to_file(message, "resp", client_socket_index, value)
+			respond_to_client(message, client_socket_index, value)
+			# 	write_to_file(message, "resp", client_socket_index, value)
 
-			message_obj = { 'message': 'A', 'value': str(value) }
-			serialized_message = pickle.dumps(message_obj, -1)
-			client_sockets[client_socket_index].sendall(serialized_message)
+			# message_obj = { 'message': 'A', 'value': str(value) }
+			# serialized_message = pickle.dumps(message_obj, -1)
+			# client_sockets[client_socket_index].sendall(serialized_message)
 
 		check_queue(destination)
+
+"""
+Responds back to the client, writing to the output
+"""
+def respond_to_client(message, client_socket_index, value):
+	write_to_file(message, "resp", client_socket_index, value)
+
+	message_obj = { 'message': 'A', 'value': str(value) }
+	serialized_message = pickle.dumps(message_obj, -1)
+	client_sockets[client_socket_index].sendall(serialized_message)
 
 '''
 Delays the message if necessary by checking the vector timestamps
@@ -352,6 +366,7 @@ def delay_message(message_obj, client_socket_index):
 							'source': source,
 							'destination': destination,
 							'timestamp': timestamp,
+							'process_type': 'server',
 							'client_socket_index': client_socket_index,
 					  	})
 
@@ -373,7 +388,7 @@ def check_queue(process_id):
 				msg = message
 				break
 	if (msg):
-		deliver_message(message['message'], message['source'], message['destination'], message['timestamp'], message['client_socket_index'])
+		deliver_message(msg, msg['client_socket_index'])
 
 """
 Updates the variable if a put and returns the value, else returns the value on a get
