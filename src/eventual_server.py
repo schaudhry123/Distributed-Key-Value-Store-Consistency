@@ -46,7 +46,7 @@ def main(argv):
 		letters = string.ascii_lowercase
 		for i in range(len(letters)):
 			c = letters[i]
-			variables[c] = [0,0]
+			variables[c] = [0,0,server_id+1]
 
 		# Get server info
 		server = servers[server_id]
@@ -297,23 +297,20 @@ def deliver_message(message_obj, client_socket_index):
 					if(msg_obj['message'][0] == 'p'):
 						# print("Comparing with " + str(writes))
 						if(msg[1] >= writes):
-							print("Received enough acknowledges to return write")
+							# print("Received enough acknowledges to return write")
 							message_queue.remove(msg)
 							respond_to_client(msg_obj, client_socket_index)
 					elif(msg_obj['message'][0] == 'g'):
 						if(msg[1] >= reads):
-							print("Recieved enough acknowledges to return read")
+							# print("Recieved enough acknowledges to return read")
 							message_queue.remove(msg)
 							respond_to_client(msg_obj, client_socket_index)
 					break
 		# print("Delivered " + message + " from process " + str(source) + ", system time is " + str(datetime.datetime.now()).split(".")[0])
 
-
-
 """
-
+Sends the appropriate response back to the client depending on the message type
 """
-
 def respond_to_client(message_obj, client_socket_index):
 	message = message_obj['message']
 	if (not 'source' in message_obj):
@@ -325,7 +322,12 @@ def respond_to_client(message_obj, client_socket_index):
 
 	# If variable has been found
 	write_to_file(message, "resp", client_socket_index, value)
-	message_obj = { 'message': 'A', 'value': str(var) }
+
+	if (message[0] == 'g'):
+		message_obj = { 'message': str(value), 'value': str(value) }
+	else:
+		message_obj = { 'message': 'A', 'value': str(value) }
+
 	serialized_message = pickle.dumps(message_obj, -1)
 	client_sockets[client_socket_index].sendall(serialized_message)
 
@@ -339,38 +341,28 @@ def update_variable(message_obj):
 	var = message[1]
 	# If a put, update the variable (format = px3)
 	if (message[0] == "p"):
-		print(message + ": comparing current time " + str(variables[var][1]) + " to source " + str(source) + " with time " + str(timestamp))
+		# print(message + ": comparing current time " + str(variables[var][1]) + " to source " + str(source) + " with time " + str(timestamp))
 		if(variables[var][1] < timestamp):
-			print("Using message with newer timestamp: " + message)
+			# print("Using message with newer timestamp: " + message)
 			variables[var][0] = int(message[2])
 			variables[var][1] = timestamp
+			variables[var][2] = source
 		elif (variables[var][1] == timestamp):
-			if (source > destination):
-				print("Using message with same timestamp and higher process #: " + message)
+			if (source > variables[var][2]):
+				# print("Using message with same timestamp and higher process #: " + message)
 				variables[var][0] = int(message[2])
 				variables[var][1] = timestamp
-			else:
-				print("Using current message with same timestamp b/c of higher process #: " + message)
-		else:
-			print("Using current message with newer timestamp: " + message)
+				variables[var][2] = source
 		return variables[var]
 	# Else, message is a get
 	else:
 		# If the received get does not have that variable (i.e = -1)
 		if (message[2] != "-"):
 			if (timestamp > variables[var][1]):
-				print("Using message with newer timestamp: " + message)
+				# print("Using message with newer timestamp: " + message)
 				variables[var][0] = int(message[2])
 				variables[var][1] = timestamp
-			# elif (variables[var][1] == timestamp):
-				# if (source > destination):
-					# print("Using message with same timestamp and higher process #: " + message)
-					# variables[var][0] = int(message[2])
-					# variables[var][1] = timestamp
-				# else:
-					# print("Using current message with same timestamp b/c of higher process #: " + message)
-			else:
-				print("Using current message with newer/equa timestamp: " + message)
+				variables[var][2] = source
 		return variables[var]
 
 
@@ -380,7 +372,8 @@ def update_variable(message_obj):
 def dump_variables(current_process, client_socket_index):
 	message = ''
 	for var in variables:
-		message += var + ": " + str(variables[var]) + "\n"
+		if (variables[var][1] != 0):
+			message += var + ": " + str(variables[var][0]) + "\n"
 
 	print(message)
 
@@ -396,9 +389,23 @@ Delays the message if necessary by checking the vector timestamps
 def delay_message(message_obj, client_socket_index):
 	process_type = message_obj['process_type']
 
+
+
 	if (process_type == "server"):
 		time.sleep((random.uniform(min_delay, max_delay)/1000.0))	# Random network delay
 		return True
+	###### HARD CODED TEST FOR EVENTUAL CONSISTENCY
+	# if ((process_type == "server" and (server_id == 1 or server_id == 2 or server_id == 0))):
+	# 	print("here")
+	# 	time.sleep(2)	# Random network delay
+	# 	return True
+	# elif(process_type == "server" and (server_id == 3) and message_obj['message'][0] == 'p'):
+	# 	time.sleep(17)
+	# 	return True
+	# elif( process_type == "server"):
+	# 	time.sleep((random.uniform(min_delay, max_delay)/1000.0))	# Random network delay
+	# 	return True
+
 	elif (process_type == "client"):
 		message = message_obj['message']
 
@@ -427,7 +434,7 @@ def delay_message(message_obj, client_socket_index):
 
 			message_queue.append( [{
 							'message': message,
-							'source': -1,
+							'source': destination,
 							'destination': destination,
 							'timestamp': timestamp,
 							'client_socket_index': client_socket_index,
@@ -436,7 +443,7 @@ def delay_message(message_obj, client_socket_index):
 
 			current_process = find_process(destination)
 
-			# Message we multicast out to other servers, waiting for acknowledgemtn
+			# Message we multicast out to other servers, waiting for acknowledgement
 			message_obj2 = {
 							'message': message,
 							'timestamp': timestamp,
@@ -490,8 +497,7 @@ def write_to_file(message, message_type, client_socket_index, value):
 
 		output_file.write(output)
 		output_file.flush()
-	else:
-		print("Invalid message_type")
+
 	output_mutex.release()
 
 '''

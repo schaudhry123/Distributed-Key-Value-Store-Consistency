@@ -148,8 +148,8 @@ def multicast(message, current_process, client_socket_index):
 	for process in servers:
 		if (process[0] != "1"):
 			unicast_send(message, current_process, process, vector_timestamp, client_socket_index)
-	if (current_process[0] == "1"):
-		print("Delivered " + message + " from process " + current_process[0] + ", system time is " + str(datetime.datetime.now()).split(".")[0])
+	# if (current_process[0] == "1"):
+		# print("Delivered " + message + " from process " + current_process[0] + ", system time is " + str(datetime.datetime.now()).split(".")[0])
 
 '''
 Finds the destination's socket in list of sockets
@@ -309,7 +309,7 @@ def deliver_message(message_obj, client_socket_index):
 
 		value = -1
 
-		print("Delivered " + message + " from process " + str(source) + ", system time is " + str(datetime.datetime.now()).split(".")[0])
+		# print("Delivered " + message + " from process " + str(source) + ", system time is " + str(datetime.datetime.now()).split(".")[0])
 
 		# Update the variable if message is a write
 		value = update_variable(message)
@@ -317,7 +317,7 @@ def deliver_message(message_obj, client_socket_index):
 		# If the sequencer, multicast message out to others
 		if (destination == 1):
 			current_process = find_current_process(source)
-			print(current_process[0])
+			# print(current_process[0])
 			multicast(message, current_process, client_socket_index)
 
 		# If you delivered the request to yourself, send acknowledgment/response to client
@@ -334,7 +334,10 @@ def respond_to_client(message, client_socket_index, value):
 	write_to_file(message, "resp", client_socket_index, value)
 
 	# Send back acknowledgment with returned value
-	message_obj = { 'message': 'A', 'value': str(value) }
+	if (message[0] == 'g'):
+		message_obj = { 'message': str(value), 'value': str(value) }
+	else:
+		message_obj = { 'message': 'A', 'value': str(value) }
 	serialized_message = pickle.dumps(message_obj, -1)
 	client_sockets[client_socket_index].sendall(serialized_message)
 
@@ -372,7 +375,7 @@ def delay_message(message_obj, client_socket_index):
 		return True
 
 	# Put message into the queue until timestamp has been updated enough
-	# print("Putting message into queue")
+	# print("Putting message " + message + " into queue")
 	message_queue.append({
 							'message': message,
 							'source': source,
@@ -394,8 +397,8 @@ def check_queue(process_id):
 			break
 		else:
 			msg_timestamp = int(message['timestamp'])
-			# print("Comparing msg w/ " + str(msg_timestamp) + " to current time of " + str(timestamp))
 			if (msg_timestamp == (vector_timestamp + 1) or (msg_timestamp == vector_timestamp)):
+				# print("Removing " + message['message'] + " from queue")
 				message_queue.remove(message)
 				msg = message
 				break
@@ -410,10 +413,7 @@ def update_variable(message):
 	# If a put, update the variable (format = px3)
 	if (message[0] == "p"):
 		variables[var] = int(message[2])
-		return variables[var]
-	# Else, get the variable value (format = gx)
-	else:
-		return variables[var]
+	return variables[var]
 
 
 """

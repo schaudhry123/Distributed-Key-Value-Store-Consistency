@@ -121,7 +121,7 @@ def setup_client():
 			if (message):
 				if (message[0] == "p" or message[0] == "g"):
 					visualizer = "SessionNumber1," + str(client_num) + "," + input_split[0] + "," + input_split[1] + "," + str(int(time.time() * 1000)) + ",req," + value
-					# print(visualizer)
+					print(visualizer)
 					sock.sendto(visualizer, ("127.0.0.1", 1234))
 
 				# If server is up, send message. Else connect to another server and kepe trying
@@ -129,7 +129,7 @@ def setup_client():
 				sent_success = unicast_send(message, "client", server)
 
 				data = server_socket[1].recv(1024)
-				tries = 0 # To prevent client from spamming a bunch of servers
+				tries = 0 # To prevent client from spamming same group of servers repeatedly
 				while (not data and tries < 5):
 					print("Could not send to server number " + str(server_id+1) + ".")
 					print("Trying to connect to next highest server " + str(server_id+1) + ".")
@@ -140,15 +140,13 @@ def setup_client():
 					tries += 1
 
 				response = pickle.loads(data)
-				response_print = response['message']
 
 				if ('value' in response):
-					response_print += ' - ' + response['value']
 					visualizer = "SessionNumber1," + str(client_num) + "," + input_split[0] + "," + input_split[1] + "," + str(int(time.time() * 1000)) + ",resp," + response['value']
 					# print(visualizer)
 					sock.sendto(visualizer, ("127.0.0.1", 1234))
 
-				print(response_print)
+				print(response['message'])
 
 	print("Exiting client")
 	server_socket.close()
